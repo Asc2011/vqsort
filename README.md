@@ -1,5 +1,5 @@
 # Vectorized Quicksort 'VQsort'
-This is a pure [Nim](https://nim-lang.org)-version of *VQsort* (AVX2-version) based on the 2021 [article/PDF](https://drops.dagstuhl.de/storage/00lipics/lipics-vol190-sea2021/LIPIcs.SEA.2021.3/LIPIcs.SEA.2021.3.pdf) by Blacher et al.
+This is a pure [Nim](https://nim-lang.org)-version of *VQsort* (AVX2-version) based on the 2021 *Fast and Robust Vectorized In-Place Sorting of Primitive Types* [PDF](https://drops.dagstuhl.de/storage/00lipics/lipics-vol190-sea2021/LIPIcs.SEA.2021.3/LIPIcs.SEA.2021.3.pdf) by Blacher et al.
 This implementation is for educational purposes. It can sort 32-bit Integers (and soon Floats).
 
 Find the genuine C++ implementation of their project **"Fast and Robust"** at [github-repo](https://github.com/simd-sorting/fast-and-robust).
