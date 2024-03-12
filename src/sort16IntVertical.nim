@@ -1,4 +1,4 @@
-# sort 8 columns, each containing 16 int, with Green's 60 modules network
+# sort 8-columns, each containing 16 x int32, with Green's 60-modules network
 #
 func sort16IntByColumn( vecsPtr :ptr int32 ) =
 
