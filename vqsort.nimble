@@ -9,5 +9,5 @@ srcDir        = "src"
 
 # Dependencies
 
-requires "nim >= 2.1.1"
+requires "nim >= 2.0.2"
 requires "nimsimd >= 1.2.9"
