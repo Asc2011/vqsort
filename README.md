@@ -1,5 +1,5 @@
 # Vectorized Quicksort 'VQsort'
-This is a pure [Nim](https://nim-lang.org)-version of *VQsort* (AVX2-version) based on the article *Fast and Robust Vectorized In-Place Sorting of Primitive Types* from 2021 [PDF](https://drops.dagstuhl.de/storage/00lipics/lipics-vol190-sea2021/LIPIcs.SEA.2021.3/LIPIcs.SEA.2021.3.pdf) by Blacher et al.
+This is a pure [Nim](https://nim-lang.org)-version of *VQsort* (AVX2-version) based on the article *'Fast and Robust Vectorized In-Place Sorting of Primitive Types'* from 2021 [PDF](https://drops.dagstuhl.de/storage/00lipics/lipics-vol190-sea2021/LIPIcs.SEA.2021.3/LIPIcs.SEA.2021.3.pdf) by Blacher et al.
 It combines sorting-networks (4/8/16) with bitonic merge procedures, a tiny pseudo-random generator (xoroshiro128+) on registers and a twofold pivot-selection strategy. The authors claim to dethrone Intels de-facto best performing sort algorithm. I can confirm its performance is amazing.
 This implementation is for educational purposes. It can sort 32-bit Integers (and soon floats).
 So this marks the return of Quicksort to the top of the food-chain of sorting algorithms.
