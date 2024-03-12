@@ -4,8 +4,6 @@ from std/stats import mean
 from std/algorithm import sort
 from vqsort import quicksort
 
-type UArr[T] = UncheckedArray[T]
-
 randomize()
 proc ns*() :int64 = monotimes.getMonoTime().ticks
 
@@ -46,14 +44,17 @@ proc testStd( cap :int, turns :int = 12 ) :float =
 
 when isMainModule:
 
+  echo "testing sizes from 0.5 .. 4_000-KB"
+
   for cap in [ 500, 1_000, 10_000, 50_000, 250_000, 500_000, 1_000_000, 4_000_000 ]:
+    #
     # take 12-samples
     # drop the best- and the worst-sample
     # return the mean-of-remaining 10-samples
     #
     let
-      vqsMean = testVQS cap
-      stdMean = testStd cap
+      vqsMean = (testVQS cap) / 1000
+      stdMean = (testStd cap) / 1000
       theX    = stdMean / vqsMean
 
       p0 = fmt"{(cap/1000):.1f}-KB "
