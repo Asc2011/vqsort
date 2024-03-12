@@ -16,6 +16,12 @@ to pseudo random-generation in detail. Note this code was adapted from the earli
 
  ]##
 
+import nimsimd/avx2
+
+when defined(gcc) or defined(clang):
+  {.localPassc: "-mavx2".}
+
+
 # transform random numbers to the range between 0 and bound - 1
 #
 func rndEpu32*( rndVec, boundVec :M256i ) :M256i =

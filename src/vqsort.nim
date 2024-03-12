@@ -274,7 +274,7 @@ proc sortInt32Network( arrPtr :pointer, bufPtr :pointer, n :int32 ) =
 
   for i in 0 ..< (idxMaxPad div 8) :
     buffer[i] = load arr[i*8].addr
-    assert i < 66, fmt"sortInt32Network:: overflow in i-{0}"
+    assert i < 66, "sortInt32Network:: overflow in i-" & $i
 
   buffer[idxMaxPad div 8  ]   = maxPadVec
   buffer[idxMaxPad div 8 + 1] = mm256_set1_epi32 int32.high
@@ -359,7 +359,7 @@ proc qsCore( arrPtr :pointer, left, right :int32; chooseAvg :var bool = false; a
 
     # buffer for sorting-networks
     #
-    let buffer :array[66, M256i]
+    var buffer :array[66, M256i]
     sortInt32Network(
       arr[left].addr,
       buffer[0].addr,
@@ -394,7 +394,7 @@ proc qsCore( arrPtr :pointer, left, right :int32; chooseAvg :var bool = false; a
 proc quicksort*[T :int32]( loc :ptr T, n :int ) =
   var tf :bool
   if loc[].sizeof == 4:
-    echo fmt"qs: sorting {n} x {$T} of length-{T.sizeof}"
+    #echo fmt"qs: sorting {n} x {$T} of length-{T.sizeof}"
     qsCore( loc, 0'i32, n.int32-1, tf )
 
 when isMainModule:

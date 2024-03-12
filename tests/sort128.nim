@@ -1,27 +1,11 @@
-import std/[monotimes, random, algorithm ]
+import std/[monotimes, random, algorithm, strformat ]
+from std/stats import mean
+from std/algorithm import sort
 
-# import ../common_avx2
 import nimsimd/avx2
 
 when defined(gcc) or defined(clang):
   {.localPassc: "-mavx2".}
-
-
-const
-  Mask2301 = MM_SHUFFLE(2,3,0,1)
-  Mask0123 = MM_SHUFFLE(0,1,2,3)
-
-randomize()
-proc ns*() :int64 = monotimes.getMonoTime().ticks
-
-func `+`*[T]( pt :ptr T, x :SomeInteger ) :ptr T =
-  let loc = cast[int]( pt )
-  cast[ptr T]( loc + ( x.int * T.sizeof ))
-
-func `+`*( pt :pointer, x :SomeInteger ) :pointer =
-  let loc = cast[int]( pt )
-  cast[pointer]( loc + x )
-
 
 ##[
 
@@ -33,8 +17,11 @@ func `+`*( pt :pointer, x :SomeInteger ) :pointer =
 
 ]##
 
+const
+  Mask2301 = MM_SHUFFLE(2,3,0,1)
+  Mask0123 = MM_SHUFFLE(0,1,2,3)
 
-# compute 8 modules
+# compute 8-modules
 #
 func COEX( a, b :var M256i ) =
   let c = a
@@ -42,7 +29,7 @@ func COEX( a, b :var M256i ) =
   b = mm256_max_epi32( c, b )
 
 
-# sort 8 columns, each containing 16 x int32 with Green's 60 modules network
+# sort 8 columns, each containing 16 x int32 with Green's 60-modules network
 #
 func sort16IntByColumn( vecsPtr :ptr int32 ) =
 
@@ -99,8 +86,7 @@ func sort16IntByColumn( vecsPtr :ptr int32 ) =
   # step 10
   COEX( vecs[ 6], vecs[ 7]); COEX( vecs[ 8], vecs[ 9])
 
-# merge columns without transposition
-#
+
 template MASK( a, b, c, d, e, f, g, h :static int ) :int32 =
   (
     ((h.uint32 < 7).ord shl 7 ) or
@@ -116,27 +102,28 @@ template MASK( a, b, c, d, e, f, g, h :static int ) :int32 =
 
 template COEX_SHUFFLE*( vec :var M256i; a, b, c, d, e, f, g, h: static int ) =
   let
-    shuffled    = vec.mm256_shuffle_epi32 MM_SHUFFLE(d, c, b, a)
-    min         = mm256_min_epi32( shuffled, vec )
-    max         = mm256_max_epi32( shuffled, vec )
-  vec = mm256_blend_epi32(min, max, MASK(a, b, c, d, e, f, g, h))
+    shuffleVec = vec.mm256_shuffle_epi32 MM_SHUFFLE( d, c, b, a)
+    minVec     = shuffleVec.mm256_min_epi32 vec
+    maxVec     = shuffleVec.mm256_max_epi32 vec
+  vec = mm256_blend_epi32( minVec, maxVec, MASK(a, b, c, d, e, f, g, h))
 
 template COEX_PERMUTE*( vec :var M256i; a, b, c, d, e, f, g, h :static int32 ) =
   let
     permuteMask = mm256_setr_epi32( a, b, c, d, e, f, g, h )
-    permuted    = mm256_permutevar8x32_epi32( vec, permuteMask )
-    min         = mm256_min_epi32( permuted, vec )
-    max         = mm256_max_epi32( permuted, vec )
-  vec = mm256_blend_epi32( min, max, MASK(a, b, c, d, e, f, g, h) )
+    permuteVec  = vec.mm256_permutevar8x32_epi32 permuteMask
+    minVec      = permuteVec.mm256_min_epi32 vec
+    maxVec      = permuteVec.mm256_max_epi32 vec
+  vec = mm256_blend_epi32( minVec, maxVec, MASK(a, b, c, d, e, f, g, h) )
 
 template REVERSE_VEC*( vec :var M256i ) =
   vec = mm256_permutevar8x32_epi32(
     vec, mm256_setr_epi32( 7, 6, 5, 4, 3, 2, 1, 0 )
   )
 
-
-func merge8ColumnsWith16Elements( pt :ptr int32 ) =
-  var vecs = cast[ptr UncheckedArray[M256i] ]( pt )
+# merge 8-columns without transposition
+#
+func merge8ColumnsWith16Elements( vecsPtr :ptr int32 ) =
+  let vecs = cast[ptr UncheckedArray[M256i] ]( vecsPtr )
 
   vecs[ 8] = mm256_shuffle_epi32( vecs[ 8], Mask2301 );  COEX( vecs[ 7], vecs[ 8] )
   vecs[ 9] = mm256_shuffle_epi32( vecs[ 9], Mask2301 );  COEX( vecs[ 6], vecs[ 9] )
@@ -268,7 +255,7 @@ func merge8ColumnsWith16Elements( pt :ptr int32 ) =
   COEX_SHUFFLE( vecs[15], 2, 3, 0, 1, 6, 7, 4, 5 );  COEX_SHUFFLE( vecs[15], 1, 0, 3, 2, 5, 4, 7, 6 )
   
 
-# sort 16 vectors (128 x int32)
+# sort 16-vectors (128 x int32)
 #
 func sort128IntWithoutTransposition( vecsPtr :ptr int32 ) =
   sort16IntByColumn vecsPtr
@@ -277,19 +264,59 @@ func sort128IntWithoutTransposition( vecsPtr :ptr int32 ) =
 func sort128*( vecsPtr :ptr int32 ) =
   sort128IntWithoutTransposition vecsPtr
 
+
+randomize()
+proc ns*() :int64 = monotimes.getMonoTime().ticks
+
 type Data = object
   start  {.align(32).} :array[128, int32]
 
+proc mkResults( algo :string, runs :var seq[int] ) :float =
+  runs.sort()
+  let (best, worst) = ( runs[0], runs[^1] )
+  runs = runs[ 1 .. ^2 ]
+  echo runs.len, "x", algo, " (", best, ")-", runs, "-(", worst, ")"
+  result = stats.mean runs
+
+proc testVQS( data :var Data, samples :int = 12 ) :float =
+  var runs :seq[int]
+  for r in 0 ..< samples :
+    let t0 = ns()
+    sort128 data.start[0].addr
+    runs.add (ns() - t0).int
+    shuffle data.start
+
+  return "VQS".mkResults runs
+
+proc testStd( data :var Data, samples :int = 12 ) :float =
+  var runs :seq[int]
+  for r in 0 ..< samples:
+    let t0 = ns()
+    data.start.sort()
+    runs.add (ns() - t0).int
+    shuffle data.start
+
+  return "Std".mkResults runs
+
+# ======================= main ==================================
+
 when isMainModule:
+
   var data = Data()
   for i in 0 ..< 128:
-    data.start[i] = rand(1_000).int32
+    data.start[i] = rand(10_000).int32
 
-  echo "before ::\n", data.start
+  # take 12-samples
+  # drop the best- and the worst-sample
+  # return the mean-of-remaining 10-samples
+  #
+  let
+    vqsMean = testVQS data
+    stdMean = testStd data
+    theX    = stdMean / vqsMean
 
-  let t0 = ns()
-  #data.start.sort()          # std/algorithm.sort()
-  sort128 data.start[0].addr  # sorting-network
-  echo "took ", ns() - t0
-  
-  echo "\nafter ::\n", data.start
+    p1 = fmt"std/sort {stdMean:.2f}"
+    p2 = fmt" | ~{theX:.1f}X | "
+    p3 = fmt"{vqsMean:.2f} vectorized Quicksort"
+
+  echo p1,p2,p3

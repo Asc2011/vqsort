@@ -1,26 +1,11 @@
-import std/[monotimes, random, algorithm ]
+import std/[monotimes, random, algorithm, strformat ]
+from std/stats import mean
+from std/algorithm import sort
 
-# import ../common_avx2
 import nimsimd/avx2
 
 when defined(gcc) or defined(clang):
   {.localPassc: "-mavx2".}
-
-
-const
-  Mask2301 = MM_SHUFFLE(2,3,0,1)
-  Mask0123 = MM_SHUFFLE(0,1,2,3)
-
-randomize()
-proc ns*() :int64 = monotimes.getMonoTime().ticks
-
-func `+`*[T]( pt :ptr T, x :SomeInteger ) :ptr T =
-  let loc = cast[int]( pt )
-  cast[ptr T]( loc + ( x.int * T.sizeof ))
-
-func `+`*( pt :pointer, x :SomeInteger ) :pointer =
-  let loc = cast[int]( pt )
-  cast[pointer]( loc + x )
 
 ##[
 
@@ -32,6 +17,9 @@ func `+`*( pt :pointer, x :SomeInteger ) :pointer =
 
 ]##
 
+const
+  Mask2301 = MM_SHUFFLE(2,3,0,1)
+  Mask0123 = MM_SHUFFLE(0,1,2,3)
 
 # compute 8 modules
 #
@@ -111,21 +99,23 @@ template MASK( a, b, c, d, e, f, g, h :static int ) :int32 =
     ((a.uint32 < 0).ord )
   ).int32
 
-
+# the three templates below should be funcs, but
+# then performance drops significantly ?
+#
 template COEX_SHUFFLE*( vec :var M256; a, b, c, d, e, f, g, h: static int ) =
   let
-    shuffled    = vec.mm256_permute_ps MM_SHUFFLE(d, c, b, a)
-    min         = mm256_min_ps( shuffled, vec )
-    max         = mm256_max_ps( shuffled, vec )
-  vec = mm256_blend_ps(min, max, MASK(a, b, c, d, e, f, g, h))
+    shuffleVec = vec.mm256_permute_ps MM_SHUFFLE( d, c, b, a )
+    minVec     = shuffleVec.mm256_min_ps vec
+    maxVec     = shuffleVec.mm256_max_ps vec
+  vec = mm256_blend_ps( minVec, maxVec, MASK( a, b, c, d, e, f, g, h ))
 
 template COEX_PERMUTE*( vec :var M256; a, b, c, d, e, f, g, h :static int32 ) =
   let
     permuteMask = mm256_setr_epi32( a, b, c, d, e, f, g, h )
-    permuted    = mm256_permutevar8x32_ps( vec, permuteMask )
-    min         = mm256_min_ps( permuted, vec )
-    max         = mm256_max_ps( permuted, vec )
-  vec = mm256_blend_ps( min, max, MASK(a, b, c, d, e, f, g, h) )
+    permuteVec  = vec.mm256_permutevar8x32_ps permuteMask
+    minVec      = permuteVec.mm256_min_ps vec
+    maxVec      = permuteVec.mm256_max_ps vec
+  vec = mm256_blend_ps( minVec, maxVec, MASK(a, b, c, d, e, f, g, h) )
 
 template REVERSE_VEC*( vec :var M256 ) =
   vec = mm256_permutevar8x32_ps(
@@ -133,8 +123,8 @@ template REVERSE_VEC*( vec :var M256 ) =
   )
 
 
-func merge8ColumnsWith16Elements( pt :ptr float32 ) =
-  var vecs = cast[ptr UncheckedArray[M256] ]( pt )
+func merge8ColumnsWith16Elements( vecsPtr :ptr float32 ) =
+  let vecs = cast[ptr UncheckedArray[M256] ]( vecsPtr )
 
   vecs[ 8] = mm256_permute_ps( vecs[ 8], Mask2301 );  COEX( vecs[ 7], vecs[ 8] )
   vecs[ 9] = mm256_permute_ps( vecs[ 9], Mask2301 );  COEX( vecs[ 6], vecs[ 9] )
@@ -275,19 +265,60 @@ func sort128IntWithoutTransposition( vecsPtr :ptr float32 ) =
 func sort128*( vecsPtr :ptr float32 ) =
   sort128IntWithoutTransposition vecsPtr
 
+# ======================= EO - Quicksort ==================================
+
+randomize()
+proc ns*() :int64 = monotimes.getMonoTime().ticks
+
 type Data = object
   start  {.align(32).} :array[128, float32]
 
+proc mkResults( algo :string, runs :var seq[int] ) :float =
+  runs.sort()
+  let (best, worst) = ( runs[0], runs[^1] )
+  runs = runs[ 1 .. ^2 ]
+  echo runs.len, "x", algo, " (", best, ")-", runs, "-(", worst, ")"
+  result = stats.mean runs
+
+proc testVQS( data :var Data, samples :int = 12 ) :float =
+  var runs :seq[int]
+  for r in 0 ..< samples :
+    let t0 = ns()
+    sort128 data.start[0].addr
+    runs.add (ns() - t0).int
+    shuffle data.start
+
+  return "VQS".mkResults runs
+
+proc testStd( data :var Data, samples :int = 12 ) :float =
+  var runs :seq[int]
+  for r in 0 ..< samples:
+    let t0 = ns()
+    data.start.sort()
+    runs.add (ns() - t0).int
+    shuffle data.start
+
+  return "Std".mkResults runs
+
+# ======================= main ==================================
+
 when isMainModule:
+
   var data = Data()
   for i in 0 ..< 128:
-    data.start[i] = rand(1_000).float32
+    data.start[i] = rand(10_000).float32
 
-  echo "before ::\n", data.start
+  # take 12-samples
+  # drop the best- and the worst-sample
+  # return the mean-of-remaining 10-samples
+  #
+  let
+    vqsMean = testVQS data
+    stdMean = testStd data
+    theX    = stdMean / vqsMean
 
-  let t0 = ns()
-  #data.start.sort()          # std/algorithm.sort()
-  sort128 data.start[0].addr  # sorting-network
-  echo "took ", ns() - t0
-  
-  echo "\nafter ::\n", data.start
+    p1 = fmt"std/sort {stdMean:.2f}"
+    p2 = fmt" | ~{theX:.1f}X | "
+    p3 = fmt"{vqsMean:.2f} vectorized Quicksort"
+
+  echo p1,p2,p3

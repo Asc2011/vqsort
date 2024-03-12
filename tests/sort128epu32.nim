@@ -1,4 +1,4 @@
-import std/[monotimes, random, #[sequtils,]# strformat ]
+import std/[monotimes, random, strformat ]
 from std/stats import mean
 from std/algorithm import sort
 
@@ -275,9 +275,9 @@ func sort128IntWithoutTransposition( vecsPtr :ptr uint32 ) =
 func sort128*( vecsPtr :ptr uint32 ) =
   sort128IntWithoutTransposition vecsPtr
 
-#[
-======================= EO - Quicksort ==================================
-]#
+
+# ======================= EO - Quicksort ==================================
+
 
 randomize()
 proc ns*() :int64 = monotimes.getMonoTime().ticks
@@ -292,28 +292,27 @@ proc mkResults( algo :string, runs :var seq[int] ) :float =
   echo runs.len, "x", algo, " (", best, ")-", runs, "-(", worst, ")"
   result = stats.mean runs
 
-
 proc testVQS( data :var Data, samples :int = 12 ) :float =
   var runs :seq[int]
   for r in 0 ..< samples :
     let t0 = ns()
     sort128 data.start[0].addr
-    runs.add (ns() - t0)
+    runs.add (ns() - t0).int
     shuffle data.start
 
   return "VQS".mkResults runs
-
 
 proc testStd( data :var Data, samples :int = 12 ) :float =
   var runs :seq[int]
   for r in 0 ..< samples:
     let t0 = ns()
     data.start.sort()
-    runs.add (ns() - t0)
+    runs.add (ns() - t0).int
     shuffle data.start
 
   return "Std".mkResults runs
 
+# ======================= main ==================================
 
 when isMainModule:
 
