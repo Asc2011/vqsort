@@ -2,7 +2,7 @@
 
 version       = "0.1.0"
 author        = "A. Schoeller"
-description   = "Vectorized Quicksort AVX2"
+description   = "A vectorized Quicksort (AVX2)"
 license       = "MIT"
 srcDir        = "src"
 
