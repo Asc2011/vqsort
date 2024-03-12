@@ -9,7 +9,7 @@ proc ns*() :int64 = monotimes.getMonoTime().ticks
 
 proc mkResults( algo :string, runs :var seq[int] ) :float =
   runs.sort()
-  let (best, worst) = ( runs[0], runs[^1] )
+  #let (best, worst) = ( runs[0], runs[^1] )
   runs = runs[ 1 .. ^2 ]
   #echo runs.len, "x", algo, " (", best, ")-", runs, "-(", worst, ")"
   result = stats.mean runs
